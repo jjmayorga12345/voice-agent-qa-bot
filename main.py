@@ -1,7 +1,7 @@
+import json
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse
 from twilio.rest import Client
 
@@ -24,14 +24,40 @@ twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 @app.api_route("/twiml", methods=["GET", "POST"])
 async def twiml_handler(request: Request):
-    """Twilio fetches this when the call connects, to ask what to do."""
-    twiml = """<?xml version="1.0" encoding="UTF-8"?>
+    """Twilio fetches this when the call connects."""
+    host = request.url.hostname
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>Hello. This is a test call from the voice agent tester.</Say>
-    <Pause length="2"/>
-    <Say>Goodbye.</Say>
+    <Connect>
+        <Stream url="wss://{host}/media-stream" />
+    </Connect>
 </Response>"""
     return HTMLResponse(content=twiml, media_type="application/xml")
+
+@app.websocket("/media-stream")
+async def media_stream(websocket: WebSocket):
+    """Twilio opens this and streams call audio through it."""
+    await websocket.accept()
+    print(">>> Twilio connected to media stream")
+
+    packet_count = 0
+    try:
+        async for message in websocket.iter_text():
+            data = json.loads(message)
+            event = data.get("event")
+
+            if event == "start":
+                print(f">>> Stream started: {data['start']['streamSid']}")
+            elif event == "media":
+                packet_count += 1
+                if packet_count % 50 == 0:
+                    print(f">>> Received {packet_count} audio packets")
+            elif event == "stop":
+                print(">>> Stream stopped")
+    except Exception as e:
+        print(f">>> Media stream error: {e}")
+    finally:
+        print(f">>> Call ended. Total packets: {packet_count}")
 
 @app.post("/start-call")
 async def start_call(request: Request):
