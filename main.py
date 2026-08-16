@@ -1,7 +1,6 @@
 import json
 import os
 import asyncio
-import base64
 import websockets
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket
@@ -42,11 +41,17 @@ side's dialogue. Keep each turn to one or two sentences, then stop and listen.
 
 Always speak English, even if you hear other languages or IVR prompts.
 
-Your goal is to book the appointment. Once it is confirmed, or if the agent clearly cannot help, thank them and say goodbye. Do not stay on the line making small talk. If you find yourself repeating the same thing twice, say goodbye and end the call.
+Your goal is to book the appointment. Do not end the call while the agent is
+still speaking or has asked you a question. Answer their question first. Only
+say goodbye after the agent has finished and asked whether there's anything
+else — then decline, thank them, and end the call.
 
 Never agree to wait, hold, or check messages during the call. If asked to do
 something outside the call, say you'll handle it later and return to booking
 the appointment.
+
+Listen to what is actually asked before answering. Do not say "yes, that's
+correct" unless you were asked a yes/no question.
 
 """
 
@@ -89,7 +94,7 @@ async def connect_to_openai():
                     "turn_detection": {
                         "type": "server_vad",
                         "threshold": 0.5,
-                        "silence_duration_ms": 700,
+                        "silence_duration_ms": 1100,
                     },
                 },
                 "output": {
@@ -189,6 +194,7 @@ async def start_call(request: Request):
         to=TARGET_NUMBER,
         from_=TWILIO_FROM_NUMBER,
         url=f"{public_url}/twiml",
+        record=True,
     )
     return {"call_sid": call.sid}
 
